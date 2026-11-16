@@ -87,9 +87,15 @@ fn normalizes_user_payload() {
 #[test]
 fn derives_emails_endpoint() {
     let u: Url = "https://api.github.com/user".parse().unwrap();
-    assert_eq!(emails_endpoint(&u).as_str(), "https://api.github.com/user/emails");
+    assert_eq!(
+        emails_endpoint(&u).as_str(),
+        "https://api.github.com/user/emails"
+    );
     let u: Url = "http://127.0.0.1:9/user/".parse().unwrap();
-    assert_eq!(emails_endpoint(&u).as_str(), "http://127.0.0.1:9/user/emails");
+    assert_eq!(
+        emails_endpoint(&u).as_str(),
+        "http://127.0.0.1:9/user/emails"
+    );
 }
 
 async fn mount_mock_github(server: &MockServer) {
@@ -158,22 +164,35 @@ async fn full_github_exchange_against_mock_provider() {
     )
     .await
     .unwrap();
-    let mails = fetch_emails(&client, &emails_endpoint(&userinfo_endpoint), &token.access_token)
-        .await
-        .unwrap();
+    let mails = fetch_emails(
+        &client,
+        &emails_endpoint(&userinfo_endpoint),
+        &token.access_token,
+    )
+    .await
+    .unwrap();
     normalize_claims(&mut user, &mails);
 
     assert_eq!(user["sub"], json!("42"));
     assert_eq!(user["email"], json!("mock@example.com"));
-    assert_eq!(sanitize_localpart(user[GITHUB_LOGIN_CLAIM].as_str().unwrap()), "mock_user");
+    assert_eq!(
+        sanitize_localpart(user[GITHUB_LOGIN_CLAIM].as_str().unwrap()),
+        "mock_user"
+    );
 }
 
 #[test]
 fn userinfo_without_id_or_login_identifies_no_github_user() {
     let user = |v: Value| -> HashMap<String, Value> { serde_json::from_value(v).unwrap() };
-    assert_eq!(identified_login(&user(json!({"id": 1, "login": "octocat"}))), Some("octocat"));
+    assert_eq!(
+        identified_login(&user(json!({"id": 1, "login": "octocat"}))),
+        Some("octocat")
+    );
     assert_eq!(identified_login(&user(json!({"login": "octocat"}))), None);
     assert_eq!(identified_login(&user(json!({"id": 1}))), None);
-    assert_eq!(identified_login(&user(json!({"id": 1, "login": "  "}))), None);
+    assert_eq!(
+        identified_login(&user(json!({"id": 1, "login": "  "}))),
+        None
+    );
     assert_eq!(identified_login(&user(json!({"id": 1, "login": 7}))), None);
 }

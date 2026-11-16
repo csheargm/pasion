@@ -100,7 +100,10 @@ pub fn normalize_claims(user: &mut HashMap<String, Value>, emails: &[GitHubEmail
         user.insert("sub".to_owned(), Value::String(id));
     }
     if let Some(login) = user.get("login").and_then(Value::as_str).map(str::to_owned) {
-        user.insert("preferred_username".to_owned(), Value::String(login.clone()));
+        user.insert(
+            "preferred_username".to_owned(),
+            Value::String(login.clone()),
+        );
         user.insert(GITHUB_LOGIN_CLAIM.to_owned(), Value::String(login));
     }
     if let Some(avatar) = user.get("avatar_url").cloned() {
@@ -120,7 +123,10 @@ pub fn normalize_claims(user: &mut HashMap<String, Value>, emails: &[GitHubEmail
 #[must_use]
 pub fn identified_login(user: &HashMap<String, Value>) -> Option<&str> {
     user.get("id").and_then(value_as_id)?;
-    user.get("login").and_then(Value::as_str).map(str::trim).filter(|l| !l.is_empty())
+    user.get("login")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
 }
 
 fn value_as_id(v: &Value) -> Option<String> {

@@ -9,11 +9,13 @@ use serde_json::Value;
 use url::Url;
 
 use super::callback::RouteError;
-use crate::oidc_client::requests::github::{
-    LOCALPART_CLAIM, emails_endpoint, fetch_emails, identified_login, localpart_candidates,
-    normalize_claims, sanitize_localpart,
+use crate::oidc_client::{
+    error::UserInfoError,
+    requests::github::{
+        LOCALPART_CLAIM, emails_endpoint, fetch_emails, identified_login, localpart_candidates,
+        normalize_claims, sanitize_localpart,
+    },
 };
-use crate::oidc_client::error::UserInfoError;
 
 /// Fetch `/user/emails`, normalise the claims and attach
 /// [`LOCALPART_CLAIM`] (the sanitised login, suffixed `-2`, `-3`, ... when
@@ -26,8 +28,8 @@ pub(crate) async fn enrich_userinfo(
     access_token: &str,
     userinfo: &mut Value,
 ) -> Result<(), RouteError> {
-    let mut claims: HashMap<String, Value> = serde_json::from_value(userinfo.take())
-        .map_err(|e| RouteError::Internal(Box::new(e)))?;
+    let mut claims: HashMap<String, Value> =
+        serde_json::from_value(userinfo.take()).map_err(|e| RouteError::Internal(Box::new(e)))?;
     let login = identified_login(&claims)
         .ok_or_else(|| UserInfoError::ProviderError {
             code: 0,
