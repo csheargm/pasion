@@ -370,9 +370,13 @@ async fn handle_get(req: &mut Request, depot: &Depot) -> Result<(Response, Cooki
                     repo.save().await?;
                     let query_str =
                         serde_urlencoded::to_string(&continue_grant).unwrap_or_default();
-                    salvo::writing::Redirect::other(
-                        url_builder.relative_url(&upstream_hint::login_path(hinted, &query_str)),
-                    )
+                    salvo::writing::Redirect::other(url_builder.relative_url(
+                        &upstream_hint::login_path(
+                            hinted,
+                            &query_str,
+                            prompt.contains(&Prompt::Login),
+                        ),
+                    ))
                 }
 
                 Some(_) if prompt.contains(&Prompt::Create) => {
@@ -393,13 +397,14 @@ async fn handle_get(req: &mut Request, depot: &Depot) -> Result<(Response, Cooki
                 }
 
                 Some(_) if prompt.contains(&Prompt::Login) => {
-                    // Client explicitly requested re-authentication: the login
-                    // page (or the hinted upstream provider) despite the session.
+                    // Keep the login page when fresh authentication is required:
+                    // an upstream redirect could silently reuse an SSO session.
                     repo.save().await?;
                     let query_str =
                         serde_urlencoded::to_string(&continue_grant).unwrap_or_default();
                     salvo::writing::Redirect::other(
-                        url_builder.relative_url(&upstream_hint::login_path(hinted, &query_str)),
+                        url_builder
+                            .relative_url(&upstream_hint::login_path(hinted, &query_str, true)),
                     )
                 }
 

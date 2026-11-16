@@ -54,8 +54,11 @@ pub fn unique_selection(selector: &str, providers: &[UpstreamOAuthProvider]) -> 
 
 /// Where an unauthenticated (or re-authenticating) user goes next:
 /// the hinted provider's authorize URL, else the login page.
+/// Forced reauthentication retains the login page because the upstream
+/// authorize handler cannot enforce a fresh login at every provider.
 #[must_use]
-pub fn login_path(hinted: Option<Ulid>, continue_query: &str) -> String {
+pub fn login_path(hinted: Option<Ulid>, continue_query: &str, force_login: bool) -> String {
+    let hinted = hinted.filter(|_| !force_login);
     let page = hinted.map_or_else(
         || "/login".to_owned(),
         |id| format!("/upstream/authorize/{id}"),
@@ -86,11 +89,20 @@ mod tests {
     #[test]
     fn login_path_prefers_the_hinted_provider() {
         let id = Ulid::nil();
-        assert_eq!(login_path(None, ""), "/login");
-        assert_eq!(login_path(None, "kind=x&id=1"), "/login?kind=x&id=1");
+        assert_eq!(login_path(None, "", false), "/login");
+        assert_eq!(login_path(None, "kind=x&id=1", false), "/login?kind=x&id=1");
         assert_eq!(
-            login_path(Some(id), "kind=x"),
+            login_path(Some(id), "kind=x", false),
             format!("/upstream/authorize/{id}?kind=x")
+        );
+    }
+
+    #[test]
+    fn forced_login_never_shortcuts_to_an_upstream_session() {
+        assert_eq!(login_path(Some(Ulid::nil()), "", true), "/login");
+        assert_eq!(
+            login_path(Some(Ulid::nil()), "kind=continue_grant&id=1", true),
+            "/login?kind=continue_grant&id=1"
         );
     }
 
