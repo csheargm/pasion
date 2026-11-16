@@ -99,7 +99,10 @@ fn LinkStateView(id: String, state: LinkState) -> Element {
         LinkState::Redirect { redirect_url } => Some(redirect_url.clone()),
         _ => None,
     };
-    crate::utils::use_redirect_url(redirect_url.is_some(), redirect_url.unwrap_or_default());
+    crate::utils::use_redirect_url(
+        redirect_url.is_some(),
+        crate::config::router_path(&redirect_url.unwrap_or_default()),
+    );
 
     match state {
         LinkState::Redirect { .. } => {
@@ -222,7 +225,7 @@ fn SuggestLinkView(
                                 {
                                     Ok(resp) if resp.status == "success" => {
                                         let url = resp.redirect_url.unwrap_or_else(|| "/".to_owned());
-                                        nav.push(url);
+                                        nav.push(crate::config::router_path(&url));
                                     }
                                     Ok(resp) => {
                                         error.set(resp.error.or(Some("Failed to link account".to_owned())));
@@ -333,7 +336,7 @@ fn RegisterView(
                                 {
                                     Ok(resp) if resp.status == "success" => {
                                         let url = resp.redirect_url.unwrap_or_else(|| "/".to_owned());
-                                        nav.push(url);
+                                        nav.push(crate::config::router_path(&url));
                                     }
                                     Ok(resp) => {
                                         if let Some(fe) = resp.field_errors {

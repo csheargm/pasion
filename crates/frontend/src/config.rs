@@ -159,3 +159,64 @@ pub fn app_path(path: &str) -> String {
         format!("{prefix}/{}", path.trim_start_matches('/'))
     }
 }
+
+/// Turn a server-relative URL from the backend (e.g. `/auth/register/steps/1`)
+/// into a path relative to the router's mount point (`/register/steps/1`).
+///
+/// The router's history already prepends the mount point, so pushing the
+/// backend URL unchanged produced `/auth/auth/...` and a "Page not found".
+/// Absolute URLs and paths outside the mount point are returned unchanged.
+pub fn router_path(url: &str) -> String {
+    strip_mount_point(&get_config().root, url)
+}
+
+fn strip_mount_point(root: &str, url: &str) -> String {
+    let prefix = root.trim_end_matches('/');
+    if prefix.is_empty() || !url.starts_with('/') {
+        return url.to_owned();
+    }
+    match url.strip_prefix(prefix) {
+        Some("") => "/".to_owned(),
+        Some(rest) if rest.starts_with(['/', '?', '#']) => {
+            if rest.starts_with('/') {
+                rest.to_owned()
+            } else {
+                format!("/{rest}")
+            }
+        }
+        _ => url.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod router_path_tests {
+    use super::strip_mount_point;
+
+    #[test]
+    fn backend_redirect_under_mount_point_is_not_doubled() {
+        assert_eq!(
+            strip_mount_point("/auth/", "/auth/register/steps/01J"),
+            "/register/steps/01J"
+        );
+        assert_eq!(
+            strip_mount_point("/auth", "/auth/consent/7?x=1"),
+            "/consent/7?x=1"
+        );
+        assert_eq!(strip_mount_point("/auth/", "/auth"), "/");
+        assert_eq!(strip_mount_point("/auth/", "/auth?next=1"), "/?next=1");
+    }
+
+    #[test]
+    fn other_urls_are_left_alone() {
+        assert_eq!(
+            strip_mount_point("/", "/register/steps/1"),
+            "/register/steps/1"
+        );
+        assert_eq!(strip_mount_point("/auth/", "/authority"), "/authority");
+        assert_eq!(
+            strip_mount_point("/auth/", "https://example.com/auth/x"),
+            "https://example.com/auth/x"
+        );
+        assert_eq!(strip_mount_point("/auth/", "/other/x"), "/other/x");
+    }
+}
