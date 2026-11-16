@@ -56,7 +56,10 @@ pub fn unique_selection(selector: &str, providers: &[UpstreamOAuthProvider]) -> 
 /// the hinted provider's authorize URL, else the login page.
 #[must_use]
 pub fn login_path(hinted: Option<Ulid>, continue_query: &str) -> String {
-    let page = hinted.map_or_else(|| "/login".to_owned(), |id| format!("/upstream/authorize/{id}"));
+    let page = hinted.map_or_else(
+        || "/login".to_owned(),
+        |id| format!("/upstream/authorize/{id}"),
+    );
     if continue_query.is_empty() {
         page
     } else {
@@ -71,7 +74,10 @@ mod tests {
     #[test]
     fn parses_only_prefixed_non_empty_hints() {
         assert_eq!(parse_upstream_hint(Some("upstream:github")), Some("github"));
-        assert_eq!(parse_upstream_hint(Some("upstream: github ")), Some("github"));
+        assert_eq!(
+            parse_upstream_hint(Some("upstream: github ")),
+            Some("github")
+        );
         assert_eq!(parse_upstream_hint(Some("upstream:")), None);
         assert_eq!(parse_upstream_hint(Some("mxid:@a:b")), None);
         assert_eq!(parse_upstream_hint(None), None);
@@ -133,7 +139,10 @@ mod tests {
         let duplicated = [provider(1, "github"), provider(2, "GITHUB")];
         assert_eq!(unique_selection("github", &duplicated), None);
         // The id stays an unambiguous selector even when brands collide.
-        assert_eq!(unique_selection(&Ulid(2).to_string(), &duplicated), Some(Ulid(2)));
+        assert_eq!(
+            unique_selection(&Ulid(2).to_string(), &duplicated),
+            Some(Ulid(2))
+        );
         assert_eq!(unique_selection("gitlab", &one), None);
     }
 }
