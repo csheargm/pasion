@@ -196,3 +196,23 @@ fn userinfo_without_id_or_login_identifies_no_github_user() {
     );
     assert_eq!(identified_login(&user(json!({"id": 1, "login": 7}))), None);
 }
+
+#[tokio::test]
+async fn missing_email_permission_does_not_hide_other_http_failures() {
+    crate::handlers::test_utils::setup();
+    for status in [403, 401, 429, 500] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/user/emails"))
+            .respond_with(ResponseTemplate::new(status))
+            .mount(&server)
+            .await;
+        let endpoint = format!("{}/user/emails", server.uri()).parse().unwrap();
+        let result = fetch_emails(&crate::reqwest_client(), &endpoint, "token").await;
+        if status == 403 {
+            assert!(result.unwrap().is_empty());
+        } else {
+            assert!(result.is_err(), "HTTP {status} must still fail");
+        }
+    }
+}

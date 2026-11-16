@@ -19,8 +19,9 @@ use crate::oidc_client::{
 
 /// Fetch `/user/emails`, normalise the claims and attach
 /// [`LOCALPART_CLAIM`] (the sanitised login, suffixed `-2`, `-3`, ... when
-/// a Pasion user already holds it). Fails loudly: a GitHub login without
-/// these claims would register an account with the wrong identity data.
+/// a Pasion user already holds it). Missing optional email permission leaves
+/// email claims absent; the configured import policy decides if they are
+/// needed.
 pub(crate) async fn enrich_userinfo(
     client: &reqwest::Client,
     repo: &mut BoxRepository,
@@ -52,7 +53,7 @@ async fn first_free_localpart(
     base: &str,
 ) -> Result<Option<String>, RepositoryError> {
     for candidate in localpart_candidates(base) {
-        if repo.user().find_by_username(&candidate).await?.is_none() {
+        if !repo.user().exists(&candidate).await? {
             return Ok(Some(candidate));
         }
     }

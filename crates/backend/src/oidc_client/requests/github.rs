@@ -146,22 +146,25 @@ pub fn emails_endpoint(userinfo_endpoint: &Url) -> Url {
     url
 }
 
-/// Fetch `GET /user/emails` (needs the `user:email` scope).
+/// Fetch `GET /user/emails` (needs the `user:email` scope). A forbidden
+/// response leaves email unavailable instead of blocking sign-in without
+/// that optional permission. Other HTTP and decoding errors still fail.
 #[tracing::instrument(skip_all, fields(%emails_endpoint))]
 pub async fn fetch_emails(
     http_client: &reqwest::Client,
     emails_endpoint: &Url,
     access_token: &str,
 ) -> Result<Vec<GitHubEmail>, UserInfoError> {
-    let emails = http_client
+    let response = http_client
         .get(emails_endpoint.as_str())
         .bearer_auth(access_token)
         .header(reqwest::header::ACCEPT, GITHUB_JSON)
         .send_traced()
-        .await?
-        .error_for_status()?
-        .json()
         .await?;
+    if response.status() == reqwest::StatusCode::FORBIDDEN {
+        return Ok(Vec::new());
+    }
+    let emails = response.error_for_status()?.json().await?;
     Ok(emails)
 }
 
