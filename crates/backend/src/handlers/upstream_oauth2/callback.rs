@@ -711,7 +711,10 @@ pub async fn handler(
             // TODO(R4): callback.rs is over budget; split each provider branch
             // of this match into its own module.
             if let Some(ui) = userinfo.as_mut()
-                && crate::oidc_client::requests::github::is_github(provider.brand_name.as_deref())
+                && crate::oidc_client::requests::github::is_native_github(
+                    provider.brand_name.as_deref(),
+                    token_response.id_token.is_some(),
+                )
             {
                 super::github::enrich_userinfo(
                     &client,

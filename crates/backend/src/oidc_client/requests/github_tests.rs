@@ -24,11 +24,13 @@ fn emails() -> Vec<GitHubEmail> {
 }
 
 #[test]
-fn detects_github_brand_case_insensitively() {
-    assert!(is_github(Some("github")));
-    assert!(is_github(Some("GitHub")));
-    assert!(!is_github(Some("google")));
-    assert!(!is_github(None));
+fn native_github_detection_preserves_oidc_bridges() {
+    assert!(is_native_github(Some("github"), false));
+    assert!(is_native_github(Some("GitHub"), false));
+    assert!(!is_native_github(Some("github"), true));
+    assert!(!is_native_github(Some("GitHub"), true));
+    assert!(!is_native_github(Some("google"), false));
+    assert!(!is_native_github(None, false));
 }
 
 #[test]

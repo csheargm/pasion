@@ -6,7 +6,8 @@
 //! email (`GET /user/emails`), normalised OIDC-style claims, and a Matrix
 //! localpart derived from the GitHub login.
 //!
-//! A provider is treated as GitHub when its `brand_name` is `github`.
+//! Native OAuth2 providers branded `github` use this mapping. A response
+//! carrying an ID token stays on the OIDC path, including GitHub OIDC bridges.
 
 use std::collections::HashMap;
 
@@ -46,10 +47,11 @@ pub struct GitHubEmail {
     pub verified: bool,
 }
 
-/// Whether a provider's `brand_name` marks it as GitHub.
+/// Whether a response belongs to native GitHub OAuth2. Display branding alone
+/// must not change the claims expected from an OIDC bridge.
 #[must_use]
-pub fn is_github(brand_name: Option<&str>) -> bool {
-    brand_name.is_some_and(|b| b.eq_ignore_ascii_case(GITHUB_BRAND_NAME))
+pub fn is_native_github(brand_name: Option<&str>, has_id_token: bool) -> bool {
+    !has_id_token && brand_name.is_some_and(|b| b.eq_ignore_ascii_case(GITHUB_BRAND_NAME))
 }
 
 /// Turn a GitHub login into a valid Matrix localpart
