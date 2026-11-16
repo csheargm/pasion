@@ -171,13 +171,19 @@ fn ContinueAs(
                     button {
                         class: "btn btn-primary btn-block",
                         disabled: submitting(),
-                        onclick: move |_| submit_consent(grant_id.clone(), submitting, error),
+                        onclick: {
+                            let gid = grant_id.clone();
+                            move |_| submit_consent(gid.clone(), submitting, error)
+                        },
                         "Continue as {mxid}"
                     }
                     button {
                         class: "btn btn-secondary btn-block",
                         disabled: submitting(),
-                        onclick: move |_| use_another_account(submitting),
+                        onclick: {
+                            let gid = grant_id.clone();
+                            move |_| use_another_account(gid.clone(), submitting, error)
+                        },
                         "Use another account"
                     }
                 }
@@ -186,17 +192,27 @@ fn ContinueAs(
     }
 }
 
-/// Ends this browser's Pasion session, then reloads: with no session the
-/// consent page sends the person to sign-in, keeping this authorization.
-fn use_another_account(mut submitting: Signal<bool>) {
+/// Ends this browser's Pasion session, then opens sign-in carrying this
+/// authorization, so the person continues it with the account they choose.
+fn use_another_account(gid: String, mut submitting: Signal<bool>, mut error: Signal<Option<String>>) {
     submitting.set(true);
+    error.set(None);
     spawn(async move {
-        // The reload below re-checks the session, so a failed DELETE shows
-        // this same page again instead of silently continuing as the account.
-        let _ = crate::api::api_delete::<serde_json::Value>("/browser-sessions/current").await;
-        #[cfg(target_arch = "wasm32")]
-        if let Some(win) = web_sys::window() {
-            let _ = win.location().reload();
+        match crate::api::api_post::<serde_json::Value>("/auth/logout", serde_json::json!({})).await {
+            Ok(_) => {
+                let _login = crate::config::app_path(&format!(
+                    "/login?kind=continue_authorization_grant&id={gid}"
+                ));
+                #[cfg(target_arch = "wasm32")]
+                if let Some(win) = web_sys::window() {
+                    let _ = win.location().assign(&_login);
+                }
+            }
+            Err(e) => {
+                // Shown, never swallowed: a failed sign-out must not look like a switch.
+                submitting.set(false);
+                error.set(Some(format!("Could not sign out: {e}")));
+            }
         }
     });
 }

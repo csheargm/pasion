@@ -850,7 +850,9 @@ fn resolve_registration_suggestions(
             &context,
             provider.claims_imports.localpart.is_required(),
         )?
-    };
+    }
+    // Same canonical (lowercase) name on the confirm and skip-confirmation paths.
+    .map(|name| crate::util::normalize_username(&name).unwrap_or(name));
 
     let suggested_avatar_url = if provider.claims_imports.avatar.ignore() {
         None
