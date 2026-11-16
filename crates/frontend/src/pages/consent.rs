@@ -68,13 +68,11 @@ pub fn Consent(grant_id: String) -> Element {
 fn ConsentForm(data: ConsentDataResponse, grant_id: String) -> Element {
     let submitting = use_signal(|| false);
     let error = use_signal(|| None::<String>);
-    {
-        let (data, gid) = (data.clone(), grant_id.clone());
-        use_hook(move || {
-            if auto_consent(&data) {
-                submit_consent(gid, submitting, error);
-            }
-        });
+    // A trusted client skips the scope list but never the account: the
+    // browser session may have been left by another app (the desktop's
+    // sign-up), so the person confirms which account continues.
+    if auto_consent(&data) {
+        return rsx! { ContinueAs { mxid: data.user.mxid.clone(), grant_id, submitting, error } };
     }
 
     let client_name = data
@@ -152,6 +150,55 @@ const TRUSTED_CLIENT_URIS: [&str; 1] = ["https://localhost:8443/"];
 fn auto_consent(data: &ConsentDataResponse) -> bool {
     data.client.client_uri.as_deref().is_some_and(|uri| TRUSTED_CLIENT_URIS.contains(&uri))
         && !data.scope.split_whitespace().any(|scope| scope.starts_with("urn:pasion:admin") || scope.starts_with("urn:mas:admin"))
+}
+
+/// "Continue as @betty?" with one click, or sign out and pick another account.
+#[component]
+fn ContinueAs(
+    mxid: String,
+    grant_id: String,
+    submitting: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        div { class: "login-page consent-page",
+            div { class: "login-container",
+                h1 { class: "heading-md login-title", "Continue as {mxid}?" }
+                if let Some(ref err) = *error.read() {
+                    div { class: "alert alert-critical", p { "{err}" } }
+                }
+                div { class: "consent-actions",
+                    button {
+                        class: "btn btn-primary btn-block",
+                        disabled: submitting(),
+                        onclick: move |_| submit_consent(grant_id.clone(), submitting, error),
+                        "Continue as {mxid}"
+                    }
+                    button {
+                        class: "btn btn-secondary btn-block",
+                        disabled: submitting(),
+                        onclick: move |_| use_another_account(submitting),
+                        "Use another account"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Ends this browser's Pasion session, then reloads: with no session the
+/// consent page sends the person to sign-in, keeping this authorization.
+fn use_another_account(mut submitting: Signal<bool>) {
+    submitting.set(true);
+    spawn(async move {
+        // The reload below re-checks the session, so a failed DELETE shows
+        // this same page again instead of silently continuing as the account.
+        let _ = crate::api::api_delete::<serde_json::Value>("/browser-sessions/current").await;
+        #[cfg(target_arch = "wasm32")]
+        if let Some(win) = web_sys::window() {
+            let _ = win.location().reload();
+        }
+    });
 }
 
 fn submit_consent(gid: String, mut submitting: Signal<bool>, mut error: Signal<Option<String>>) {
