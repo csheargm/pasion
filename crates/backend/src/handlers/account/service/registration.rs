@@ -71,6 +71,7 @@ pub enum BeginPasswordRegistrationIssue {
     RegistrationDisabled,
     UsernameRequired,
     UsernameExists,
+    UsernameInvalid,
     EmailOrPhoneRequired,
     EmailInvalid,
     EmailInUse,
@@ -94,6 +95,7 @@ impl BeginPasswordRegistrationIssue {
             Self::RegistrationDisabled => "registration_disabled".into(),
             Self::UsernameRequired => "username_required".into(),
             Self::UsernameExists => "username_exists".into(),
+            Self::UsernameInvalid => format!("Username is not valid. {}", crate::util::USERNAME_INVALID_MESSAGE),
             Self::EmailOrPhoneRequired => "email_or_phone_required".into(),
             Self::EmailInvalid => "email_invalid".into(),
             Self::EmailInUse => "email_in_use".into(),
@@ -937,8 +939,14 @@ pub async fn begin_password_registration(
 
     let mut issues: Vec<BeginPasswordRegistrationIssue> = Vec::new();
 
-    if request.username.is_empty() {
+    let mut request = request;
+    if let Some(normalized) = crate::util::normalize_username(&request.username) {
+        request.username = normalized;
+    }
+    if request.username.trim().is_empty() {
         issues.push(BeginPasswordRegistrationIssue::UsernameRequired);
+    } else if !crate::util::username_valid(&request.username) {
+        issues.push(BeginPasswordRegistrationIssue::UsernameInvalid);
     } else if repo.user().exists(&request.username).await? {
         issues.push(BeginPasswordRegistrationIssue::UsernameExists);
     } else {

@@ -28,7 +28,7 @@ pub async fn execute(
     _display_name: Option<&str>,
     context: &mut serde_json::Value,
 ) -> Result<StageOutcome, StageExecutionError> {
-    if username.is_empty() {
+    if username.trim().is_empty() {
         return Ok(StageOutcome::Retry {
             errors: vec![StageValidationError {
                 field: Some("username".into()),
@@ -37,6 +37,16 @@ pub async fn execute(
             }],
         });
     }
+    let Some(username) = crate::util::normalize_username(username) else {
+        return Ok(StageOutcome::Retry {
+            errors: vec![StageValidationError {
+                field: Some("username".into()),
+                message: crate::util::USERNAME_INVALID_MESSAGE.into(),
+                code: "username_invalid".into(),
+            }],
+        });
+    };
+    let username = username.as_str();
 
     // Check if username already exists
     if repo.user().exists(username).await? {

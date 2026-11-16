@@ -923,6 +923,7 @@ fn resolve_registration_attributes(
     } else {
         action.username.clone()
     }
+    .map(|name| crate::util::normalize_username(&name).unwrap_or(name))
     .unwrap_or_default();
 
     // Avatar URL is always imported when configured (not behind a user toggle).
@@ -961,6 +962,11 @@ async fn validate_registration_action(
 
     if username.is_empty() {
         field_errors.insert("username".into(), serde_json::json!("required"));
+    } else if !crate::util::username_valid(username) {
+        field_errors.insert(
+            "username".into(),
+            serde_json::json!(crate::util::USERNAME_INVALID_MESSAGE),
+        );
     } else if repo.user().exists(username).await?
         || !homeserver
             .is_localpart_available(username)

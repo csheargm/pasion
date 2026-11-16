@@ -77,6 +77,24 @@ pub fn username_valid(username: &str) -> bool {
     true
 }
 
+// TODO(R4): util.rs is over budget; split username helpers into `util/username.rs`.
+/// Normalize a username typed at registration: trim surrounding whitespace
+/// and lowercase ASCII letters, then validate it.
+///
+/// Matrix localparts are lowercase; a name typed as `Anna` must become
+/// `@anna`, not `@Anna`, or clients that compare Matrix IDs exactly see two
+/// different accounts. Returns `None` when the result is still not a valid
+/// username.
+#[must_use]
+pub fn normalize_username(input: &str) -> Option<String> {
+    let normalized = input.trim().to_ascii_lowercase();
+    username_valid(&normalized).then_some(normalized)
+}
+
+/// Message shown next to the username field when it cannot be normalized.
+pub const USERNAME_INVALID_MESSAGE: &str =
+    "Use lowercase letters, numbers and . _ = - / + only (not starting with _).";
+
 pub async fn password_manager_from_config(
     config: &PasswordsConfig,
 ) -> Result<PasswordManager, anyhow::Error> {
@@ -641,6 +659,25 @@ pub async fn homeserver_connection_from_config(
     }
 
     Ok(registry)
+}
+
+#[cfg(test)]
+mod username_tests {
+    use super::normalize_username;
+
+    #[test]
+    fn capitals_become_lowercase_localparts() {
+        assert_eq!(normalize_username("Anna").as_deref(), Some("anna"));
+        assert_eq!(normalize_username(" Betty ").as_deref(), Some("betty"));
+    }
+
+    #[test]
+    fn invalid_names_are_rejected_after_lowercasing() {
+        assert_eq!(normalize_username(""), None);
+        assert_eq!(normalize_username("_anna"), None);
+        assert_eq!(normalize_username("an na"), None);
+        assert_eq!(normalize_username("Ånna"), None);
+    }
 }
 
 #[cfg(test)]
