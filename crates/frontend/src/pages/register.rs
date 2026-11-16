@@ -46,6 +46,31 @@ pub fn Register() -> Element {
     }
 }
 
+/// A client's `prompt=create` sends the user straight here with the pending
+/// grant as `?kind=continue_authorization_grant&id=…`. Keep it exactly as the
+/// login page's "Create account" link does, so finishing registration resumes
+/// the grant (consent, then back to the client) instead of the account console.
+/// Called from `main` before the router starts: the router drops the query
+/// while it resolves the route, so a component hook only ever saw "".
+pub(crate) fn remember_pending_grant() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let Some(window) = web_sys::window() else { return };
+        if window.location().pathname().ok() != Some(crate::config::app_path("/register")) {
+            return;
+        }
+        let Ok(search) = window.location().search() else { return };
+        let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) else { return };
+        if let (Some(kind), Some(id)) = (params.get("kind"), params.get("id"))
+            && kind == "continue_authorization_grant"
+            && let Ok(Some(storage)) = window.session_storage()
+        {
+            let _ = storage.set_item("post_auth_kind", &kind);
+            let _ = storage.set_item("post_auth_id", &id);
+        }
+    }
+}
+
 #[component]
 fn RegisterPage(providers: ProvidersResponse) -> Element {
     let mut username = use_signal(String::new);

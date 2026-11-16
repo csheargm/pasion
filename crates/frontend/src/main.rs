@@ -31,6 +31,7 @@ pub fn use_site_config() -> SiteConfigContext {
 
 fn main() {
     crate::pages::login::preserve_login_query();
+    crate::pages::register::remember_pending_grant();
     init_theme();
     dioxus::launch(app);
 }

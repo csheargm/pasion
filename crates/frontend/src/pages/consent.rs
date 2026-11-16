@@ -66,8 +66,16 @@ pub fn Consent(grant_id: String) -> Element {
 
 #[component]
 fn ConsentForm(data: ConsentDataResponse, grant_id: String) -> Element {
-    let mut submitting = use_signal(|| false);
-    let mut error = use_signal(|| None::<String>);
+    let submitting = use_signal(|| false);
+    let error = use_signal(|| None::<String>);
+    {
+        let (data, gid) = (data.clone(), grant_id.clone());
+        use_hook(move || {
+            if auto_consent(&data) {
+                submit_consent(gid, submitting, error);
+            }
+        });
+    }
 
     let client_name = data
         .client
@@ -117,58 +125,7 @@ fn ConsentForm(data: ConsentDataResponse, grant_id: String) -> Element {
                         disabled: submitting(),
                         onclick: {
                             let gid = grant_id.clone();
-                            move |_| {
-                                submitting.set(true);
-                                error.set(None);
-                                let gid = gid.clone();
-
-                                spawn(async move {
-                                    let result = crate::api::api_post::<ConsentSubmitResponse>(
-                                        &format!("/oauth2/consent/{gid}"),
-                                        serde_json::json!({ "action": "consent" }),
-                                    ).await;
-                                    match result {
-                                        Ok(resp) if resp.status == "success" => {
-                                            if let Some(_url) = resp.redirect_url {
-                                                // Keep the button disabled: we are about to
-                                                // navigate away, and re-enabling it opens a
-                                                // window for a duplicate submit that the
-                                                // backend would reject with "grant is not
-                                                // pending".
-                                                #[cfg(target_arch = "wasm32")]
-                                                {
-                                                    if let Some(win) = web_sys::window() {
-                                                        // Use assign() for a full navigation
-                                                        // (more reliable than set_href in some
-                                                        // WASM scenarios).
-                                                        let _ = win.location().assign(&_url);
-                                                    }
-                                                }
-                                            } else {
-                                                submitting.set(false);
-                                                error.set(Some("No redirect URL in response.".to_owned()));
-                                            }
-                                        }
-                                        // A 401 comes back from `api_post` as `Err`, not `Ok`
-                                        // (see `api::request`), so the session-expired case is
-                                        // handled in the `Err` arm below.
-                                        Ok(resp) => {
-                                            submitting.set(false);
-                                            error.set(Some(resp.error.unwrap_or_else(|| "Authorization failed.".to_owned())));
-                                        }
-                                        Err(e) => {
-                                            submitting.set(false);
-                                            if e == "not_authenticated" {
-                                                // Session expired — redirect to login so the
-                                                // user can re-authenticate and retry.
-                                                navigator().push(Route::Login {});
-                                            } else {
-                                                error.set(Some(e));
-                                            }
-                                        }
-                                    }
-                                });
-                            }
+                            move |_| submit_consent(gid.clone(), submitting, error)
                         },
                         "Allow"
                     }
@@ -184,6 +141,68 @@ fn ConsentForm(data: ConsentDataResponse, grant_id: String) -> Element {
             }
         }
     }
+}
+
+/// Demo-only first-party clients: their consent is given without a click.
+/// Pasion requires a web client's redirect host to equal its `client_uri`
+/// host, so the code can only go back to this origin. Admin scopes always ask.
+/// Upstream should make this a server-side "trusted client" setting instead.
+const TRUSTED_CLIENT_URIS: [&str; 1] = ["https://localhost:8443/"];
+
+fn auto_consent(data: &ConsentDataResponse) -> bool {
+    data.client.client_uri.as_deref().is_some_and(|uri| TRUSTED_CLIENT_URIS.contains(&uri))
+        && !data.scope.split_whitespace().any(|scope| scope.starts_with("urn:pasion:admin") || scope.starts_with("urn:mas:admin"))
+}
+
+fn submit_consent(gid: String, mut submitting: Signal<bool>, mut error: Signal<Option<String>>) {
+    submitting.set(true);
+    error.set(None);
+    spawn(async move {
+        let result = crate::api::api_post::<ConsentSubmitResponse>(
+            &format!("/oauth2/consent/{gid}"),
+            serde_json::json!({ "action": "consent" }),
+        ).await;
+        match result {
+            Ok(resp) if resp.status == "success" => {
+                if let Some(_url) = resp.redirect_url {
+                    // Keep the button disabled: we are about to
+                    // navigate away, and re-enabling it opens a
+                    // window for a duplicate submit that the
+                    // backend would reject with "grant is not
+                    // pending".
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        if let Some(win) = web_sys::window() {
+                            // Use assign() for a full navigation
+                            // (more reliable than set_href in some
+                            // WASM scenarios).
+                            let _ = win.location().assign(&_url);
+                        }
+                    }
+                } else {
+                    submitting.set(false);
+                    error.set(Some("No redirect URL in response.".to_owned()));
+                }
+            }
+            // A 401 comes back from `api_post` as `Err`, not `Ok`
+            // (see `api::request`), so the session-expired case is
+            // handled in the `Err` arm below.
+            Ok(resp) => {
+                submitting.set(false);
+                error.set(Some(resp.error.unwrap_or_else(|| "Authorization failed.".to_owned())));
+            }
+            Err(e) => {
+                submitting.set(false);
+                if e == "not_authenticated" {
+                    // Session expired — redirect to login so the
+                    // user can re-authenticate and retry.
+                    navigator().push(Route::Login {});
+                } else {
+                    error.set(Some(e));
+                }
+            }
+        }
+    });
 }
 
 fn scope_description(scope: &str) -> String {
