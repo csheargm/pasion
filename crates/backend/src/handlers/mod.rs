@@ -49,6 +49,8 @@ pub mod flow;
 pub mod health;
 /// Internal Matrix integration endpoints.
 pub mod matrix;
+/// Hagency cookieless native sign-in API for the desktop client.
+pub mod native;
 /// OAuth 2.0 and OpenID Connect protocol endpoints.
 pub mod oauth2;
 /// Password hashing, verification, and complexity checking.

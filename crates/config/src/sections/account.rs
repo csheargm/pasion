@@ -89,6 +89,14 @@ pub struct AccountConfig {
     /// first administrator role while no admin users exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bootstrap_admin_token: Option<String>,
+
+    /// Hagency: the one statically-configured public client (a `[[clients]]`
+    /// entry with `client_auth_method = "none"` and a loopback redirect URI)
+    /// allowed to use the cookieless native sign-in API under
+    /// `/api/v1/native`. Unset disables that API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<String>")]
+    pub native_client_id: Option<ulid::Ulid>,
 }
 
 impl Default for AccountConfig {
@@ -105,6 +113,7 @@ impl Default for AccountConfig {
             admin_portal_url: None,
             registration_token_required: DISABLED_BY_DEFAULT,
             bootstrap_admin_token: None,
+            native_client_id: None,
         }
     }
 }
@@ -122,6 +131,7 @@ impl AccountConfig {
             && self.admin_portal_url.is_none()
             && matches_disabled(&self.registration_token_required)
             && self.bootstrap_admin_token.is_none()
+            && self.native_client_id.is_none()
     }
 }
 

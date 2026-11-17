@@ -395,7 +395,11 @@ fn build_human_router(router: Router, _templates: Templates) -> Router {
         .push(Router::with_path("/register/{**rest}").get(spa::get))
         .push(Router::with_path("/recover").get(spa::get))
         .push(Router::with_path("/recover/{**rest}").get(spa::get))
-        .push(Router::with_path("/consent/{**rest}").get(spa::get))
+        .push(
+            Router::with_path("/consent/{**rest}")
+                .hoop(crate::handlers::native::sso::native_consent)
+                .get(spa::get),
+        )
         .push(Router::with_path("/link").get(spa::get))
         .push(Router::with_path("/device/{**rest}").get(spa::get))
         // Account pages (root-level frontend routes)
@@ -545,6 +549,8 @@ fn build_account_api_router(router: Router, mount: &str) -> Router {
         )
         // User emails
         .push(Router::with_path("user-emails/{id}").delete(emails::remove_email))
+        // Hagency native sign-in (cookieless, desktop client only)
+        .push(crate::handlers::native::router())
         // Auth (login, logout, providers, registration, recovery)
         .push(
             Router::with_path("auth")

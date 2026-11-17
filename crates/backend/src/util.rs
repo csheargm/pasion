@@ -431,6 +431,7 @@ pub fn site_config_from_config(
             .password_registration_contact_required,
         registration_token_required: account_config.registration_token_required,
         bootstrap_admin_token: account_config.bootstrap_admin_token.clone(),
+        native_client_id: account_config.native_client_id.map(|id| id.to_string()),
         email_change_allowed: account_config.email_change_allowed,
         displayname_change_allowed: account_config.displayname_change_allowed,
         password_change_allowed: password_config.enabled()

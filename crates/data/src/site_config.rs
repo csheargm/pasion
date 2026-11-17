@@ -76,6 +76,10 @@ pub struct SiteConfig {
     /// first administrator role while no admin users exist.
     pub bootstrap_admin_token: Option<String>,
 
+    /// Hagency: the client id allowed to use the cookieless native sign-in
+    /// API; `None` disables it.
+    pub native_client_id: Option<String>,
+
     /// Whether users can change their email.
     pub email_change_allowed: bool,
 

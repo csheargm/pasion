@@ -150,6 +150,7 @@ pub fn test_site_config() -> SiteConfig {
         password_registration_enabled: true,
         registration_token_required: false,
         bootstrap_admin_token: None,
+        native_client_id: None,
         email_change_allowed: true,
         displayname_change_allowed: true,
         password_change_allowed: true,
@@ -353,6 +354,13 @@ impl TestState {
             .push(
                 Router::with_path("/oauth2/device")
                     .post(crate::handlers::oauth2::device::authorize::post),
+            )
+            // Hagency native sign-in
+            .push(Router::with_path("/api/v1").push(crate::handlers::native::router()))
+            .push(
+                Router::with_path("/consent/{**rest}")
+                    .hoop(crate::handlers::native::sso::native_consent)
+                    .get(crate::handlers::spa::get),
             )
             // REST API
             .push(Router::with_path("/api/v1/viewer").get(crate::handlers::account::viewer::get_viewer))

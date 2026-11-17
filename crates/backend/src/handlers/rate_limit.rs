@@ -161,6 +161,7 @@ struct LimiterInner {
     password_check_for_requester: KeyedLimiter<RequesterFingerprint>,
     password_check_for_user: KeyedLimiter<Ulid>,
     registration_per_requester: KeyedLimiter<RequesterFingerprint>,
+    username_lookup_per_requester: KeyedLimiter<RequesterFingerprint>,
     email_authentication_per_requester: KeyedLimiter<RequesterFingerprint>,
     email_authentication_per_email: KeyedLimiter<String>,
     email_authentication_emails_per_session: KeyedLimiter<Ulid>,
@@ -184,6 +185,8 @@ impl LimiterInner {
             password_check_for_requester: KeyedLimiter::from_config(&config.login.per_ip)?,
             password_check_for_user: KeyedLimiter::from_config(&config.login.per_account)?,
             registration_per_requester: KeyedLimiter::from_config(&config.registration)?,
+            // Live sign-up availability checks share the per-IP login budget.
+            username_lookup_per_requester: KeyedLimiter::from_config(&config.login.per_ip)?,
             email_authentication_per_requester: KeyedLimiter::from_config(
                 &config.email_authentication.per_ip,
             )?,
@@ -325,6 +328,20 @@ impl Limiter {
         }
 
         Ok(())
+    }
+
+    /// Check if a public username-availability lookup can be performed.
+    // TODO(R4): rate_limit.rs is over budget; split per-operation limiters
+    // (registration, email, phone, lookup) into their own modules.
+    pub async fn check_username_lookup(
+        &self,
+        requester: RequesterFingerprint,
+    ) -> Result<(), RegistrationLimitedError> {
+        if self.inner.username_lookup_per_requester.check(&requester).await {
+            Ok(())
+        } else {
+            Err(RegistrationLimitedError::Requester(requester))
+        }
     }
 
     // -----------------------------------------------------------------------
