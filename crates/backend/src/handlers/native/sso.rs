@@ -20,7 +20,11 @@ use ulid::Ulid;
 use crate::{
     handlers::{
         common::{DepotExt, RouteError, extract_bound_activity_tracker, make_clock, make_rng},
-        oauth2::{access::accept_authorization_consent, authorization::upstream_hint::parse_upstream_hint},
+        native::policy,
+        oauth2::{
+            access::accept_authorization_consent,
+            authorization::upstream_hint::{parse_upstream_hint, selects_provider},
+        },
     },
     salvo_utils::session::SessionInfoExt,
 };
@@ -31,12 +35,35 @@ pub fn grant_id_from_tail(tail: &str) -> Option<Ulid> {
     tail.split(['/', '?', '#']).next()?.parse().ok()
 }
 
-/// Whether this grant is a native upstream sign-in the hoop may finish.
+/// Whether this grant is a native upstream sign-in the hoop may finish: the
+/// native client, still pending, an upstream hint, and the same loopback,
+/// PKCE S256, state and Matrix-device-scope rules as the password API.
 #[must_use]
 pub fn is_native_sso_grant(grant: &AuthorizationGrant, client_id: &str, native: Option<&str>) -> bool {
+    let pkce_ok = grant
+        .code
+        .as_ref()
+        .and_then(|code| code.pkce.as_ref())
+        .is_some_and(|pkce| policy::check_pkce(&pkce.challenge_method, &pkce.challenge).is_ok());
     native == Some(client_id)
         && matches!(grant.stage, AuthorizationGrantStage::Pending)
         && parse_upstream_hint(grant.login_hint.as_deref()).is_some()
+        && policy::is_loopback(&grant.redirect_uri)
+        && pkce_ok
+        && grant.state.as_deref().is_some_and(|state| policy::check_state(state).is_ok())
+        && policy::check_scope(&grant.scope).is_ok()
+}
+
+/// The fresh authentication must be an upstream sign-in with the provider
+/// the grant's hint selected, started after the grant was created.
+async fn upstream_auth_matches(repo: &mut pasion_data::BoxRepository, grant: &AuthorizationGrant, auth: &pasion_data::Authentication) -> Result<bool, RouteError> {
+    let pasion_data::AuthenticationMethod::UpstreamOAuth2 { upstream_oauth2_session_id } = auth.authentication_method else {
+        return Ok(false);
+    };
+    let Some(upstream) = repo.upstream_oauth_session().lookup(upstream_oauth2_session_id).await? else { return Ok(false) };
+    let Some(provider) = repo.upstream_oauth_provider().lookup(upstream.provider_id).await? else { return Ok(false) };
+    let selector = parse_upstream_hint(grant.login_hint.as_deref()).unwrap_or_default();
+    Ok(upstream.created_at >= grant.created_at && selects_provider(selector, &provider))
 }
 
 /// Fresh authentication: after the grant was created, never a leftover one.
@@ -61,9 +88,15 @@ async fn finish(req: &mut Request, depot: &Depot, grant_id: Ulid) -> Result<Opti
         return Ok(None);
     };
     let last = repo.browser_session().get_last_authentication(&session).await?;
-    repo.cancel().await?;
     let native_grant = client.is_some_and(|c| is_native_sso_grant(&grant, &c.client_id, Some(native)));
-    if !native_grant || !authenticated_for_grant(&grant, last.map(|a| a.created_at)) {
+    let fresh = match last.as_ref() {
+        Some(auth) if native_grant && authenticated_for_grant(&grant, Some(auth.created_at)) => {
+            upstream_auth_matches(&mut repo, &grant, auth).await?
+        }
+        _ => false,
+    };
+    repo.cancel().await?;
+    if !fresh {
         return Ok(None);
     }
     let (mut rng, clock) = (make_rng(), make_clock());

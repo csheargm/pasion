@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[cfg(test)]
-mod test_utils {
+pub(crate) mod test_utils {
     use oauth2_types::scope::{OPENID, Scope};
     use pasion_data::{
         UpstreamOAuthProviderClaimsImports, UpstreamOAuthProviderDiscoveryMode,

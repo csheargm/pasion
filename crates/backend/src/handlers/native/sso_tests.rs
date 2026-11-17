@@ -6,19 +6,32 @@ use oauth2_types::requests::ResponseMode;
 use pasion_data::{
     AuthorizationCode, Pkce, RepositoryAccess,
     oauth2::{OAuth2AuthorizationGrantRepository, OAuth2ClientRepository},
+    upstream_oauth2::{UpstreamOAuthProviderRepository, UpstreamOAuthSessionRepository},
     user::{BrowserSessionRepository, UserPasswordRepository},
 };
 use pasion_iana::oauth::PkceCodeChallengeMethod;
 
 use super::tests::{CHALLENGE, REDIRECT, SCOPE, body, exchange, native_state, post, provision};
 use crate::{
+    handlers::admin::v1::upstream_oauth_links::test_utils::oidc_provider_params,
     handlers::test_utils::{CookieHelper, RequestBuilderExt, ResponseExt, TestState},
     salvo_utils::session::SessionInfoExt,
 };
 
 /// A pending native grant with `login_hint`, and a browser session for
 /// `username` authenticated `auth_offset` after the grant was created.
+/// How the browser session was authenticated.
+#[derive(Clone, Copy)]
+enum Auth {
+    Password,
+    Upstream(&'static str),
+}
+
 async fn grant_and_session(state: &TestState, client_id: &str, hint: &str, auth_offset: Duration) -> (ulid::Ulid, CookieHelper) {
+    grant_with(state, client_id, hint, SCOPE, Auth::Upstream("github"), auth_offset).await
+}
+
+async fn grant_with(state: &TestState, client_id: &str, hint: &str, scope: &str, auth: Auth, auth_offset: Duration) -> (ulid::Ulid, CookieHelper) {
     let mut repo = state.repository().await.unwrap();
     let mut rng = state.rng();
     let client = repo.oauth2_client().find_by_client_id(client_id).await.unwrap().unwrap();
@@ -30,7 +43,7 @@ async fn grant_and_session(state: &TestState, client_id: &str, hint: &str, auth_
             &client,
             REDIRECT.parse().unwrap(),
             REDIRECT.to_owned(),
-            SCOPE.parse().unwrap(),
+            scope.parse().unwrap(),
             Some(AuthorizationCode {
                 code: format!("{}sso000", ulid::Ulid::new()),
                 pkce: Some(Pkce { challenge_method: PkceCodeChallengeMethod::S256, challenge: CHALLENGE.to_owned() }),
@@ -48,10 +61,28 @@ async fn grant_and_session(state: &TestState, client_id: &str, hint: &str, auth_
     let password = repo.user_password().active(&user).await.unwrap().unwrap();
     let session = repo.browser_session().add(&mut rng, &state.clock, &user, None).await.unwrap();
     state.clock.advance(auth_offset);
-    repo.browser_session()
-        .authenticate_with_password(&mut rng, &state.clock, &session, &password)
-        .await
-        .unwrap();
+    match auth {
+        Auth::Password => {
+            repo.browser_session().authenticate_with_password(&mut rng, &state.clock, &session, &password).await.unwrap();
+        }
+        Auth::Upstream(brand) => {
+            let existing = repo.upstream_oauth_provider().all_enabled().await.unwrap();
+            let provider = match existing.into_iter().find(|p| p.brand_name.as_deref() == Some(brand)) {
+                Some(provider) => provider,
+                None => repo
+                    .upstream_oauth_provider()
+                    .add(&mut rng, &state.clock, oidc_provider_params(brand))
+                    .await
+                    .unwrap(),
+            };
+            let upstream = repo
+                .upstream_oauth_session()
+                .add(&mut rng, &state.clock, &provider, ulid::Ulid::new().to_string(), None, None)
+                .await
+                .unwrap();
+            repo.browser_session().authenticate_with_upstream(&mut rng, &state.clock, &session, &upstream).await.unwrap();
+        }
+    }
     repo.save().await.unwrap();
     let cookies = CookieHelper::new();
     cookies.import(state.cookie_jar().set_session(&session));
@@ -101,4 +132,19 @@ async fn stale_sessions_and_password_grants_get_the_consent_page() {
     let (plain, cookies) = grant_and_session(&state, &client, "mxid:@gina:example.com", Duration::seconds(1)).await;
     let page = state.request(cookies.with_cookies(Request::get(format!("/consent/{plain}")).empty())).await;
     assert_fell_through(&page);
+}
+
+#[tokio::test]
+async fn only_an_upstream_sign_in_with_the_hinted_provider_and_device_scopes_finishes() {
+    let (state, client) = signed_up().await;
+    let second = Duration::seconds(1);
+    for (scope, auth) in [
+        (SCOPE, Auth::Password),
+        (SCOPE, Auth::Upstream("google")),
+        ("openid urn:pasion:admin", Auth::Upstream("github")),
+    ] {
+        let (grant, cookies) = grant_with(&state, &client, "upstream:github", scope, auth, second).await;
+        let page = state.request(cookies.with_cookies(Request::get(format!("/consent/{grant}")).empty())).await;
+        assert_fell_through(&page);
+    }
 }

@@ -195,6 +195,12 @@ pub async fn post_register(req: &mut Request, depot: &Depot, res: &mut Response)
         Ok(v) => v,
         Err(error) => return render_grant(res, Err(error)),
     };
+    // Every attempt costs lookup budget, so `username_exists` replies cannot
+    // enumerate names faster than the availability endpoint allows.
+    if depot.limiter()?.check_username_lookup(caller.requester).await.is_err() {
+        render_error(res, "rate_limited");
+        return Ok(());
+    }
     match register(depot, &input, &caller).await? {
         Ok(session) => respond_with_code(depot, res, validated, &input, &session, caller).await,
         Err(code) => {

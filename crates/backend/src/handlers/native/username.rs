@@ -44,9 +44,19 @@ pub async fn get_available(req: &mut Request, depot: &Depot, res: &mut Response)
     let mut repo = depot.repo().await?;
     let exists = repo.user().exists(&username).await?;
     repo.cancel().await?;
-    // A homeserver error must not report a taken name as free: say taken.
-    let free = !exists
-        && depot.homeserver()?.is_localpart_available(&username).await.unwrap_or(false);
+    let free = if exists {
+        false
+    } else {
+        match depot.homeserver()?.is_localpart_available(&username).await {
+            Ok(free) => free,
+            Err(error) => {
+                tracing::warn!(error = &*error as &dyn std::error::Error, "localpart availability check failed");
+                res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+                res.render(Json(serde_json::json!({"status": "error", "error": "homeserver_unavailable"})));
+                return Ok(());
+            }
+        }
+    };
     res.render(Json(Availability {
         username: Some(username),
         status: if free { "available" } else { "taken" },
